@@ -4,6 +4,14 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+numpy = "*"
+ipykernel = "*"
+matplotlib = "*"
+pandas = "*"
+scipy = "*"
+mne = "*"
+idun-sdk = {ref = "develop", git = "https://github.com/iduntech/idn-internal-sdk"}
+
 
 [dev-packages]
 
