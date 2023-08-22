@@ -29,6 +29,17 @@ def calculate_lag(signal_1, signal_2):
     lag = index_of_max_corr - (num_samples - 1)
     return correlation, max_correlation, lag
 
+def calculate_epochs_lag(base_epochs, compare_epochs):
+    correlation_arr = []
+    lag_arr = []
+    max_corr_arr = []
+    for idx, epoch in enumerate(base_epochs):
+        corr, max_corr, lag = calculate_lag(epoch, compare_epochs[idx])
+        max_corr_arr.append(max_corr)
+        correlation_arr.append(corr)
+        lag_arr.append(lag)
+    return correlation_arr, max_corr_arr, lag_arr
+
 def epoch_data(data, samples_per_epoch):
     """Split the data into epochs."""
     num_epochs = len(data) // samples_per_epoch
