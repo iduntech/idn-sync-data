@@ -1,2 +1,7 @@
 *.csv
 *.edf
+*.mat
+*.png
+*.pdf
+*.jsonevents
+*.DS_Store
