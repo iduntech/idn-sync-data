@@ -221,3 +221,70 @@ def cut_at_end(
         idun_cut_data,
         idun_base_cut_data,
     )
+
+
+def apply_shift_to_data(
+    shift,
+    idun_clipped_data,
+    idun_base_clipped_data,
+    prodigy_clipped_data,
+    prodigy_base_clipped_df,
+):
+    # cut the lag_mean data from the start of idun_clipped_data if it is positive or from the start of if negative
+    if shift < 0:
+        idun_pre_cut_data = idun_clipped_data[-shift:]
+        idun_base_pre_cut_data = idun_base_clipped_data[-shift:]
+        prodigy_pre_cut_data = prodigy_clipped_data[:-(-shift)]
+        prodigy_base_pre_cut_df = prodigy_base_clipped_df[:-(-shift)].reset_index(
+            drop=True
+        )
+    else:
+        idun_pre_cut_data = idun_clipped_data[:-shift]
+        idun_base_pre_cut_data = idun_base_clipped_data[:-shift]
+        prodigy_pre_cut_data = prodigy_clipped_data[shift:]
+        prodigy_base_pre_cut_df = prodigy_base_clipped_df[shift:].reset_index(drop=True)
+
+    return (
+        idun_pre_cut_data,
+        idun_base_pre_cut_data,
+        prodigy_pre_cut_data,
+        prodigy_base_pre_cut_df,
+    )
+
+
+def adjust_data_by_mean_lag(
+    mean_final_lag,
+    prodigy_adjusted_final_arr,
+    prodigy_adjusted_base_final_df,
+    idun_adjusted_final_arr,
+    idun_adjusted_base_final_arr,
+):
+    if mean_final_lag > 0:
+        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[int(mean_final_lag) :]
+        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+            int(mean_final_lag) :
+        ].reset_index(drop=True)
+
+        shifted_final_idun_arr = idun_adjusted_final_arr[: -int(mean_final_lag)]
+        shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
+            : -int(mean_final_lag)
+        ]
+    else:
+        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[
+            : -(-int(mean_final_lag))
+        ]
+        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+            : -(-int(mean_final_lag))
+        ].reset_index(drop=True)
+
+        shifted_final_idun_arr = idun_adjusted_final_arr[-int(mean_final_lag) :]
+        shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
+            -int(mean_final_lag) :
+        ]
+
+    return (
+        shifted_final_prodigy_arr,
+        shifted_final_prodigy_base_df,
+        shifted_final_idun_arr,
+        shifted_final_idun_base_arr,
+    )
