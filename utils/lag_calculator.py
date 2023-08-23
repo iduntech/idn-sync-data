@@ -288,3 +288,46 @@ def adjust_data_by_mean_lag(
         shifted_final_idun_arr,
         shifted_final_idun_base_arr,
     )
+
+
+def equalize_data_length(
+    prodigy_filtered_data_rs,
+    idun_filtered_data,
+    idun_base_data,
+    prodigy_base_data_df,
+    config,
+):
+    prodigy_clipped_data = copy.deepcopy(prodigy_filtered_data_rs)
+    idun_clipped_data = copy.deepcopy(idun_filtered_data)
+    idun_base_clipped_data = copy.deepcopy(idun_base_data)
+    prodigy_base_clipped_df = copy.deepcopy(prodigy_base_data_df)
+
+    # Find which one is longer and how much longer
+    if len(prodigy_clipped_data) > len(idun_clipped_data):
+        diff = int(len(prodigy_clipped_data) - len(idun_clipped_data))
+        prodigy_clipped_data = prodigy_clipped_data[int(diff / 2) : int(-diff / 2)]
+        prodigy_base_clipped_df = prodigy_base_clipped_df[
+            int(diff / 2) : int(-diff / 2)
+        ].reset_index(drop=True)
+        print(
+            f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of Prodigy data"
+        )
+    else:
+        diff = int(len(idun_clipped_data) - len(prodigy_clipped_data))
+        idun_clipped_data = idun_clipped_data[int(diff / 2) : int(-diff / 2)]
+        idun_base_clipped_data = idun_base_clipped_data[int(diff / 2) : int(-diff / 2)]
+        print(
+            f"IDUN data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of IDUN data"
+        )
+
+    same_times = np.linspace(
+        0, len(idun_clipped_data) / config.BASE_SAMPLE_RATE, len(idun_clipped_data)
+    )
+
+    return (
+        prodigy_clipped_data,
+        idun_clipped_data,
+        idun_base_clipped_data,
+        prodigy_base_clipped_df,
+        same_times,
+    )
