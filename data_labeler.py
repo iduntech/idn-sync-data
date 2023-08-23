@@ -9,7 +9,9 @@ from mne.time_frequency import psd_array_multitaper
 mne.set_log_level("WARNING")
 
 
-def calculate_freq_power(eeg_data: np.ndarray, sfreq: int, freq_band: tuple) -> np.ndarray:
+def calculate_freq_power(
+    eeg_data: np.ndarray, sfreq: int, freq_band: tuple
+) -> np.ndarray:
     """
     Calculate the average power in a specified frequency band
 
@@ -17,7 +19,7 @@ def calculate_freq_power(eeg_data: np.ndarray, sfreq: int, freq_band: tuple) -> 
     :param sfreq: Sampling frequency of the EEG data
     :param freq_band: Frequency band to calculate the power in
     :return: Average power in the specified frequency band
-    
+
     """
 
     # Calculate PSD for the whole dataset
@@ -42,7 +44,7 @@ def calculate_bad_epochs(
     :param epoch_length: Length of each epoch in seconds
     :param freq_band: Frequency band to calculate the power in
     :param outlier_threshold: Threshold for identifying outliers.
-                              IMPORTANT: 
+                              IMPORTANT:
                                 For resting state data make the threshold 3
                                 For sleep data make the threshold 15
     :return: Array of bad epochs
