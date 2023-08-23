@@ -8,6 +8,8 @@ from matplotlib import pyplot as plt
 from idun_sdk import do_bandpass, prepare_fft
 from data_labeler import calculate_bad_epochs
 from scipy.signal import find_peaks
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 from idun_sdk import do_bandpass, prepare_fft, do_highpass
 import copy
 
@@ -61,12 +63,12 @@ def remove_outliers(data):
     return data[(data >= lower_bound) & (data <= upper_bound)]
 
 
-def replace_outliers(data):
+def replace_outliers(data, strictness=0.5):
     Q1 = np.percentile(data, 25)
     Q3 = np.percentile(data, 75)
     IQR = Q3 - Q1
-    lower_bound = Q1 - 0.5 * IQR
-    upper_bound = Q3 + 0.5 * IQR
+    lower_bound = Q1 - strictness * IQR
+    upper_bound = Q3 + strictness * IQR
     # Use np.where to replace outliers with np.nan
     cleaned_data = np.where((data < lower_bound) | (data > upper_bound), np.nan, data)
     return cleaned_data
@@ -141,3 +143,31 @@ def prepare_idun_data(idun_raw_data, config):
         idun_data, config.HIGHPASS_FREQ, config.IDUN_SAMPLE_RATE
     )
     return idun_highpassed_data, idun_filtered_data, idun_time_stamps
+
+def polynomial_regression_on_lag(cleaned_fine_lag_arr,polynomial_degree):
+    original_raw_lag = copy.deepcopy(cleaned_fine_lag_arr)
+    x_axis_lag = np.arange(len(cleaned_fine_lag_arr)).reshape(-1, 1)
+    x_axis_lag_copy = x_axis_lag.copy()
+    
+    # find where y is not nan
+    not_nan_idx = np.where(~np.isnan(original_raw_lag))[0]
+    original_raw_lag = original_raw_lag[not_nan_idx]
+    x_axis_lag = x_axis_lag[not_nan_idx]
+    
+    # Transform the features to 2nd degree polynomial features
+    poly = PolynomialFeatures(degree=polynomial_degree)
+    X_poly = poly.fit_transform(x_axis_lag)
+    
+    # Create a LinearRegression model and fit it to the polynomial features
+    reg = LinearRegression().fit(X_poly, original_raw_lag)
+    
+    # Predict values
+    X_new_poly = poly.transform(x_axis_lag_copy)
+    linear_regression_lag = reg.predict(X_new_poly)
+    
+    return linear_regression_lag
+
+
+
+
+
