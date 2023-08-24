@@ -5,12 +5,10 @@ import glob
 import os
 from scipy.signal import resample
 from matplotlib import pyplot as plt
-from idun_sdk import do_bandpass, prepare_fft
-from data_labeler import calculate_bad_epochs
+from utils.freq_calculator import do_bandpass, prepare_fft, do_highpass
 from scipy.signal import find_peaks
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
-from idun_sdk import do_bandpass, prepare_fft, do_highpass
 import copy
 
 
