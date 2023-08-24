@@ -329,3 +329,19 @@ def equalize_data_length(
         prodigy_base_clipped_df,
         same_times,
     )
+
+def identify_discontinuities(data, threshold):
+    diffs = np.diff(data)
+    discontinuities = np.where(np.abs(diffs) > threshold)[0]
+    return discontinuities
+
+def make_discontinuous(data, discontinuous_indices):
+    for index in discontinuous_indices:
+        data[index + 1] = np.nan
+    return data
+
+def clean_data_from_spikes(data,threshold):
+    discontinuous_indices = identify_discontinuities(data, threshold)
+    data = make_discontinuous(data, discontinuous_indices)
+    data = np.array(data)
+    return data
