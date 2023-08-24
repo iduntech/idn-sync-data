@@ -5,3 +5,5 @@
 *.pdf
 *.jsonevents
 *.DS_Store
+*.pyc
+*.txt
