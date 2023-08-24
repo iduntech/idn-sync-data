@@ -170,9 +170,7 @@ def polynomial_regression_on_lag(cleaned_fine_lag_arr, polynomial_degree):
 def cut_throughout_data(
     prodigy_cut_data, prodigy_base_cut_df, lag_positions, cumulative_lags
 ):
-    dataset2 = copy.deepcopy(prodigy_cut_data)
-    base_dataset2 = copy.deepcopy(prodigy_base_cut_df)
-    dataset2_list = dataset2.tolist()
+    prodigy_cut_data_list = prodigy_cut_data.tolist()
 
     for i in range(len(lag_positions)):
         start_index = lag_positions[i]
@@ -183,17 +181,49 @@ def cut_throughout_data(
             n_replace = int(cumulative_lags[i] - cumulative_lags[i - 1])
 
         for j in range(n_replace):
-            if start_index + j < len(dataset2_list):
-                dataset2_list[start_index + j] = np.nan
-                base_dataset2.iloc[start_index + j] = np.nan
+            if start_index + j < len(prodigy_cut_data_list):
+                prodigy_cut_data_list[start_index + j] = np.nan
+                prodigy_base_cut_df.iloc[start_index + j] = np.nan
 
     # Convert back to numpy array and remove np.nan values
-    adjusted_dataset2 = np.array(dataset2_list)
-    adjusted_dataset2 = adjusted_dataset2[~np.isnan(adjusted_dataset2)]
+    prodigy_cut_data_list = np.array(prodigy_cut_data_list)
+    prodigy_cut_data_list = prodigy_cut_data_list[~np.isnan(prodigy_cut_data_list)]
 
     # Drop rows in base_dataset2 that contain NaN values
-    base_dataset2 = base_dataset2.dropna()
-    return adjusted_dataset2, base_dataset2
+    prodigy_base_cut_df = prodigy_base_cut_df.dropna()
+    return prodigy_cut_data_list, prodigy_base_cut_df
+
+
+
+def cut_throughout_data_arr(idun_cut_data, idun_base_cut, lag_positions, cumulative_lags):
+    
+    idun_cut_data_list = idun_cut_data.tolist()
+    idun_base_cut_list = idun_base_cut.tolist()  # Convert to list for easier manipulation
+
+    for i in range(len(lag_positions)):
+        start_index = lag_positions[i]
+        
+        # Calculate how many elements to replace with np.nan
+        if i == 0:
+            n_replace = int(cumulative_lags[i])
+        else:
+            n_replace = int(cumulative_lags[i] - cumulative_lags[i - 1])
+
+        for j in range(n_replace):
+            if start_index + j < len(idun_cut_data_list):
+                idun_cut_data_list[start_index + j] = np.nan
+                idun_base_cut_list[start_index + j] = np.nan  # Modify list in the same manner
+
+    # Convert back to numpy array and remove np.nan values
+    idun_cut_data_array = np.array(idun_cut_data_list)
+    idun_cut_data_array = idun_cut_data_array[~np.isnan(idun_cut_data_array)]
+    
+    # Convert base_cut_list back to numpy array and remove np.nan values
+    idun_base_cut_array = np.array(idun_base_cut_list)
+    idun_base_cut_array = idun_base_cut_array[~np.isnan(idun_base_cut_array)]
+    
+    return idun_cut_data_array, idun_base_cut_array
+
 
 
 def cut_at_end(
