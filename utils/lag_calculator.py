@@ -5,10 +5,10 @@ import glob
 import os
 from scipy.signal import resample
 from matplotlib import pyplot as plt
-from idun_sdk import do_bandpass, prepare_fft
-from data_labeler import calculate_bad_epochs
+from utils.freq_calculator import do_bandpass, prepare_fft, do_highpass
 from scipy.signal import find_peaks
-from idun_sdk import do_bandpass, prepare_fft, do_highpass
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 import copy
 
 
@@ -61,12 +61,12 @@ def remove_outliers(data):
     return data[(data >= lower_bound) & (data <= upper_bound)]
 
 
-def replace_outliers(data):
+def replace_outliers(data, strictness=0.5):
     Q1 = np.percentile(data, 25)
     Q3 = np.percentile(data, 75)
     IQR = Q3 - Q1
-    lower_bound = Q1 - 0.5 * IQR
-    upper_bound = Q3 + 0.5 * IQR
+    lower_bound = Q1 - strictness * IQR
+    upper_bound = Q3 + strictness * IQR
     # Use np.where to replace outliers with np.nan
     cleaned_data = np.where((data < lower_bound) | (data > upper_bound), np.nan, data)
     return cleaned_data
@@ -141,3 +141,191 @@ def prepare_idun_data(idun_raw_data, config):
         idun_data, config.HIGHPASS_FREQ, config.IDUN_SAMPLE_RATE
     )
     return idun_highpassed_data, idun_filtered_data, idun_time_stamps
+
+
+def polynomial_regression_on_lag(cleaned_fine_lag_arr, polynomial_degree):
+    original_raw_lag = copy.deepcopy(cleaned_fine_lag_arr)
+    x_axis_lag = np.arange(len(cleaned_fine_lag_arr)).reshape(-1, 1)
+    x_axis_lag_copy = x_axis_lag.copy()
+
+    # find where y is not nan
+    not_nan_idx = np.where(~np.isnan(original_raw_lag))[0]
+    original_raw_lag = original_raw_lag[not_nan_idx]
+    x_axis_lag = x_axis_lag[not_nan_idx]
+
+    # Transform the features to 2nd degree polynomial features
+    poly = PolynomialFeatures(degree=polynomial_degree)
+    X_poly = poly.fit_transform(x_axis_lag)
+
+    # Create a LinearRegression model and fit it to the polynomial features
+    reg = LinearRegression().fit(X_poly, original_raw_lag)
+
+    # Predict values
+    X_new_poly = poly.transform(x_axis_lag_copy)
+    linear_regression_lag = reg.predict(X_new_poly)
+
+    return linear_regression_lag
+
+
+def cut_throughout_data(
+    prodigy_cut_data, prodigy_base_cut_df, lag_positions, cumulative_lags
+):
+    dataset2 = copy.deepcopy(prodigy_cut_data)
+    base_dataset2 = copy.deepcopy(prodigy_base_cut_df)
+    dataset2_list = dataset2.tolist()
+
+    for i in range(len(lag_positions)):
+        start_index = lag_positions[i]
+        # Calculate how many elements to replace with np.nan
+        if i == 0:
+            n_replace = int(cumulative_lags[i])
+        else:
+            n_replace = int(cumulative_lags[i] - cumulative_lags[i - 1])
+
+        for j in range(n_replace):
+            if start_index + j < len(dataset2_list):
+                dataset2_list[start_index + j] = np.nan
+                base_dataset2.iloc[start_index + j] = np.nan
+
+    # Convert back to numpy array and remove np.nan values
+    adjusted_dataset2 = np.array(dataset2_list)
+    adjusted_dataset2 = adjusted_dataset2[~np.isnan(adjusted_dataset2)]
+
+    # Drop rows in base_dataset2 that contain NaN values
+    base_dataset2 = base_dataset2.dropna()
+    return adjusted_dataset2, base_dataset2
+
+
+def cut_at_end(
+    prodigy_adjusted_final_arr,
+    prodigy_adjusted_base_final_df,
+    idun_cut_data,
+    idun_base_cut_data,
+):
+    # Cut from the end of the longer dataset
+    if len(prodigy_adjusted_final_arr) > len(idun_cut_data):
+        prodigy_adjusted_final_arr = prodigy_adjusted_final_arr[: len(idun_cut_data)]
+        prodigy_adjusted_base_final_df = prodigy_adjusted_base_final_df[
+            : len(idun_cut_data)
+        ].reset_index(drop=True)
+
+    else:
+        idun_cut_data = idun_cut_data[: len(prodigy_adjusted_final_arr)]
+        idun_base_cut_data = idun_base_cut_data[: len(prodigy_adjusted_final_arr)]
+
+    return (
+        prodigy_adjusted_final_arr,
+        prodigy_adjusted_base_final_df,
+        idun_cut_data,
+        idun_base_cut_data,
+    )
+
+
+def apply_shift_to_data(
+    shift,
+    idun_clipped_data,
+    idun_base_clipped_data,
+    prodigy_clipped_data,
+    prodigy_base_clipped_df,
+):
+    # cut the lag_mean data from the start of idun_clipped_data if it is positive or from the start of if negative
+    if shift < 0:
+        idun_pre_cut_data = idun_clipped_data[-shift:]
+        idun_base_pre_cut_data = idun_base_clipped_data[-shift:]
+        prodigy_pre_cut_data = prodigy_clipped_data[:-(-shift)]
+        prodigy_base_pre_cut_df = prodigy_base_clipped_df[:-(-shift)].reset_index(
+            drop=True
+        )
+    else:
+        idun_pre_cut_data = idun_clipped_data[:-shift]
+        idun_base_pre_cut_data = idun_base_clipped_data[:-shift]
+        prodigy_pre_cut_data = prodigy_clipped_data[shift:]
+        prodigy_base_pre_cut_df = prodigy_base_clipped_df[shift:].reset_index(drop=True)
+
+    return (
+        idun_pre_cut_data,
+        idun_base_pre_cut_data,
+        prodigy_pre_cut_data,
+        prodigy_base_pre_cut_df,
+    )
+
+
+def adjust_data_by_mean_lag(
+    mean_final_lag,
+    prodigy_adjusted_final_arr,
+    prodigy_adjusted_base_final_df,
+    idun_adjusted_final_arr,
+    idun_adjusted_base_final_arr,
+):
+    if mean_final_lag > 0:
+        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[int(mean_final_lag) :]
+        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+            int(mean_final_lag) :
+        ].reset_index(drop=True)
+
+        shifted_final_idun_arr = idun_adjusted_final_arr[: -int(mean_final_lag)]
+        shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
+            : -int(mean_final_lag)
+        ]
+    else:
+        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[
+            : -(-int(mean_final_lag))
+        ]
+        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+            : -(-int(mean_final_lag))
+        ].reset_index(drop=True)
+
+        shifted_final_idun_arr = idun_adjusted_final_arr[-int(mean_final_lag) :]
+        shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
+            -int(mean_final_lag) :
+        ]
+
+    return (
+        shifted_final_prodigy_arr,
+        shifted_final_prodigy_base_df,
+        shifted_final_idun_arr,
+        shifted_final_idun_base_arr,
+    )
+
+
+def equalize_data_length(
+    prodigy_filtered_data_rs,
+    idun_filtered_data,
+    idun_base_data,
+    prodigy_base_data_df,
+    config,
+):
+    prodigy_clipped_data = copy.deepcopy(prodigy_filtered_data_rs)
+    idun_clipped_data = copy.deepcopy(idun_filtered_data)
+    idun_base_clipped_data = copy.deepcopy(idun_base_data)
+    prodigy_base_clipped_df = copy.deepcopy(prodigy_base_data_df)
+
+    # Find which one is longer and how much longer
+    if len(prodigy_clipped_data) > len(idun_clipped_data):
+        diff = int(len(prodigy_clipped_data) - len(idun_clipped_data))
+        prodigy_clipped_data = prodigy_clipped_data[int(diff / 2) : int(-diff / 2)]
+        prodigy_base_clipped_df = prodigy_base_clipped_df[
+            int(diff / 2) : int(-diff / 2)
+        ].reset_index(drop=True)
+        print(
+            f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of Prodigy data"
+        )
+    else:
+        diff = int(len(idun_clipped_data) - len(prodigy_clipped_data))
+        idun_clipped_data = idun_clipped_data[int(diff / 2) : int(-diff / 2)]
+        idun_base_clipped_data = idun_base_clipped_data[int(diff / 2) : int(-diff / 2)]
+        print(
+            f"IDUN data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of IDUN data"
+        )
+
+    same_times = np.linspace(
+        0, len(idun_clipped_data) / config.BASE_SAMPLE_RATE, len(idun_clipped_data)
+    )
+
+    return (
+        prodigy_clipped_data,
+        idun_clipped_data,
+        idun_base_clipped_data,
+        prodigy_base_clipped_df,
+        same_times,
+    )
