@@ -10,11 +10,10 @@ matplotlib = "*"
 pandas = "*"
 scipy = "*"
 mne = "*"
-idun-sdk = {ref = "develop", git = "https://github.com/iduntech/idn-internal-sdk"}
 scikit-learn = "*"
 
 [dev-packages]
-black = "*"
+black = {version = "*", extras = ["jupyter"]}
 
 [requires]
 python_version = "3.11"
