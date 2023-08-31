@@ -72,20 +72,23 @@ def replace_outliers(data, strictness=0.5):
     return cleaned_data
 
 
-def prepare_prodigy_data(prodigy_raw_data, config):
-    prodigy_data, _ = prodigy_raw_data[:, :]
+def prepare_prodigy_data(prodigy_raw_data, config): # prepare_prodigy_data(ra, config):
+    prodigy_data, _ = prodigy_raw_data[:, :] # TODO: Make that input to this function is an array and the channels
+    # TODO: This is so that this function will work on full scalp as well as prodigy
     prodigy_channel_names = prodigy_raw_data.ch_names
 
-    prodigy_data = pd.DataFrame(prodigy_data.T, columns=prodigy_channel_names)
+    prodigy_data = pd.DataFrame(prodigy_data.T, columns=prodigy_channel_names) # TODO: This is so that this function will work on full scalp as well as prodigy
+    # ---------
+
     prodigy_base_data_resampled = resample_all_prodigy_data(prodigy_data, config)
 
-    prodigy_channel_1_data = np.array(prodigy_base_data_resampled[config.CHANNEL_1])
+    prodigy_channel_1_data = np.array(prodigy_base_data_resampled[config.CHANNEL_1]) # TODO: Names of channels should be dapted according to data type
     prodigy_channel_2_data = np.array(prodigy_base_data_resampled[config.CHANNEL_2])
 
     # minus right eye from left eye
     prodigy_channel_1_minus_2 = prodigy_channel_1_data - prodigy_channel_2_data
     prodigy_channel_1_minus_2 = (
-        prodigy_channel_1_minus_2 * 1000000
+        prodigy_channel_1_minus_2 * 1000000 # TODO: Make this a configuration
     )  # To get the data to same scale as ours, v to uv
 
     prodigy_filtered_data_rs = do_bandpass(
