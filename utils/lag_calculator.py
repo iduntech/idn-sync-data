@@ -9,6 +9,7 @@ from utils.freq_calculator import do_bandpass, prepare_fft, do_highpass
 from scipy.signal import find_peaks
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error
 import copy
 
 
@@ -71,62 +72,110 @@ def replace_outliers(data, strictness=0.5):
     cleaned_data = np.where((data < lower_bound) | (data > upper_bound), np.nan, data)
     return cleaned_data
 
+def convert_data_to_array(comparisoneeg_raw_data,file_extention):
+    if file_extention == 'edf':
+        comparisoneeg_data, _ = comparisoneeg_raw_data[:, :]
+        comparisoneeg_data = comparisoneeg_data.T # TODO: Make that input to this function is an array and the channels
+        # TODO: This is so that this function will work on full scalp as well as prodigy
+        comparisoneeg_channel_names = comparisoneeg_raw_data.ch_names
+    elif file_extention == 'xdf':
+        comparisoneeg_data = comparisoneeg_raw_data[0]['time_series']
+        n_channel = int(comparisoneeg_raw_data[0]['info']['channel_count'][0])
+        comparisoneeg_channel_names = []
+        for item in range(n_channel): 
+            comparisoneeg_channel_names.append(comparisoneeg_raw_data[0]['info']['desc'][0]['channels'][0]['channel'][item]['label'])
+        comparisoneeg_channel_names = [item for sublist in comparisoneeg_channel_names for item in sublist]
+    
+    comparisoneeg_data = pd.DataFrame(comparisoneeg_data, columns=comparisoneeg_channel_names)
+    return comparisoneeg_data,comparisoneeg_channel_names
 
-def prepare_prodigy_data(prodigy_raw_data, config): # prepare_prodigy_data(ra, config):
-    prodigy_data, _ = prodigy_raw_data[:, :] # TODO: Make that input to this function is an array and the channels
-    # TODO: This is so that this function will work on full scalp as well as prodigy
-    prodigy_channel_names = prodigy_raw_data.ch_names
 
-    prodigy_data = pd.DataFrame(prodigy_data.T, columns=prodigy_channel_names) # TODO: This is so that this function will work on full scalp as well as prodigy
-    # ---------
+def prepare_comparisoneeg_data(comparisoneeg_data, config): # prepare_prodigy_data(ra, config):
 
-    prodigy_base_data_resampled = resample_all_prodigy_data(prodigy_data, config)
+    comparisoneeg_base_data_resampled = resample_all_comparisoneeg_data(comparisoneeg_data, config)
+    channel_1_key,channel_2_key,scale_factor,sample_rate= get_device_configuration(config)
+   
+    # Extract channel data based on the current device configuration
+    comparisoneeg_channel_1_data = np.array(comparisoneeg_base_data_resampled[channel_1_key])
+    comparisoneeg_channel_2_data = np.array(comparisoneeg_base_data_resampled[channel_2_key])
 
-    prodigy_channel_1_data = np.array(prodigy_base_data_resampled[config.CHANNEL_1]) # TODO: Names of channels should be dapted according to data type
-    prodigy_channel_2_data = np.array(prodigy_base_data_resampled[config.CHANNEL_2])
+    # Calculate the difference between channels
+    comparisoneeg_channel_1_minus_2 = comparisoneeg_channel_1_data - comparisoneeg_channel_2_data
 
-    # minus right eye from left eye
-    prodigy_channel_1_minus_2 = prodigy_channel_1_data - prodigy_channel_2_data
-    prodigy_channel_1_minus_2 = (
-        prodigy_channel_1_minus_2 * 1000000 # TODO: Make this a configuration
-    )  # To get the data to same scale as ours, v to uv
+    # Apply the scale factor
+    comparisoneeg_channel_1_minus_2 *= scale_factor
 
-    prodigy_filtered_data_rs = do_bandpass(
-        prodigy_channel_1_minus_2,
+    comparisoneeg_filtered_data_rs = do_bandpass(
+        comparisoneeg_channel_1_minus_2,
         [config.FILTER_RANGE[0], config.FILTER_RANGE[1]],
         config.BASE_SAMPLE_RATE,
     )
+
     resampled_times = np.linspace(
         0,
-        len(prodigy_filtered_data_rs) / config.BASE_SAMPLE_RATE,
-        len(prodigy_filtered_data_rs),
+        len(comparisoneeg_filtered_data_rs) / config.BASE_SAMPLE_RATE,
+        len(comparisoneeg_filtered_data_rs),
     )
 
+    # if config.DEVICE != 'PRODIGY': 
+    #     comparisoneeg_base_data_resampled_single = []
+    #     for i in range(0,len(comparisoneeg_base_data_resampled.columns)-5):
+    #         comparisoneeg_base_data_single_column = do_highpass(
+    #             comparisoneeg_base_data_resampled[comparisoneeg_base_data_resampled.columns[i]], config.HIGHPASS_FREQ, config.BASE_SAMPLE_RATE
+    #         )
+    #         comparisoneeg_base_data_resampled_single.append(comparisoneeg_base_data_single_column)
+                
+    #     comparisoneeg_base_data_resampled1 = pd.DataFrame(comparisoneeg_base_data_resampled_single,columns= comparisoneeg_base_data_resampled.columns)
+
     # create a pandas dataframe with prodigy_channel_names as column names and prodigy_data
-    prodigy_data = pd.DataFrame(prodigy_data.T, columns=prodigy_channel_names)
-    return prodigy_base_data_resampled, prodigy_filtered_data_rs, resampled_times
+    #comparisoneeg_data = pd.DataFrame(comparisoneeg_data.T, columns=prodigy_channel_names) # penso che questo sia sbagliato
+    return comparisoneeg_base_data_resampled, comparisoneeg_filtered_data_rs, resampled_times
 
 
-def resample_all_prodigy_data(prodigy_base_data_df, config):
+def get_device_configuration(config):
+    if config.DEVICE == 'PRODIGY':
+        channel_1_key = config.PRODIGY_CHANNEL_1
+        channel_2_key = config.PRODIGY_CHANNEL_2
+        scale_factor = config.PRODIGY_SCALE_FACTOR
+        sample_rate = config.PRODIGY_SAMPLE_RATE
+
+    elif config.DEVICE == 'MBT':
+        channel_1_key = config.MBT_CHANNEL_1
+        channel_2_key = config.MBT_CHANNEL_2
+        scale_factor = config.MBT_SCALE_FACTOR
+        sample_rate = config.MBT_SAMPLE_RATE
+
+    else:
+        raise ValueError(f"Unsupported device: {config.DEVICE}")
+    
+    return channel_1_key,channel_2_key,scale_factor,sample_rate
+    
+
+def resample_all_comparisoneeg_data(comparisoneeg_base_data_df, config):
     # create a copy of the prodigy_base_data_df
-    prodigy_base_data_resampled = []
+    comparisoneeg_base_data_resampled = []
     # extract one column for lenght calculatoion
-    len_channel = len(prodigy_base_data_df[config.CHANNEL_1])
+    channel_1_key,_,_,sample_rate= get_device_configuration(config)
+    # (sample,scale,key1,key2) = get_device_configuration(config)
+    len_channel = len(comparisoneeg_base_data_df[channel_1_key])
     num_samples_250 = int(
-        config.BASE_SAMPLE_RATE / config.PRODIGY_SAMPLE_RATE * len_channel
+        config.BASE_SAMPLE_RATE / sample_rate * len_channel
     )
-    for column in prodigy_base_data_df.columns:
-        resampled_prodigy_data = resample(prodigy_base_data_df[column], num_samples_250)
-        prodigy_base_data_resampled.append(resampled_prodigy_data)
+    
+    for column in comparisoneeg_base_data_df.columns:
+        resampled_comparisoneeg_data = resample(comparisoneeg_base_data_df[column], num_samples_250)
+        comparisoneeg_base_data_resampled.append(resampled_comparisoneeg_data)
     # convert the list to a numpy array
-    prodigy_base_data_resampled = np.array(prodigy_base_data_resampled)
+    comparisoneeg_base_data_resampled = np.array(comparisoneeg_base_data_resampled)
     # transpose the array
-    prodigy_base_data_resampled = prodigy_base_data_resampled.T
+    comparisoneeg_base_data_resampled = comparisoneeg_base_data_resampled.T
     # create a pandas dataframe with prodigy_channel_names as column names and prodigy_data
-    prodigy_base_data_resampled = pd.DataFrame(
-        prodigy_base_data_resampled, columns=prodigy_base_data_df.columns
+    comparisoneeg_base_data_resampled = pd.DataFrame(
+        comparisoneeg_base_data_resampled, columns=comparisoneeg_base_data_df.columns
     )
-    return prodigy_base_data_resampled
+
+    
+    return comparisoneeg_base_data_resampled
 
 
 def prepare_idun_data(idun_raw_data, config):
@@ -146,7 +195,7 @@ def prepare_idun_data(idun_raw_data, config):
     return idun_highpassed_data, idun_filtered_data, idun_time_stamps
 
 
-def polynomial_regression_on_lag(cleaned_fine_lag_arr, polynomial_degree):
+def best_polynomial_regression_on_lag(cleaned_fine_lag_arr,config):
     original_raw_lag = copy.deepcopy(cleaned_fine_lag_arr)
     x_axis_lag = np.arange(len(cleaned_fine_lag_arr)).reshape(-1, 1)
     x_axis_lag_copy = x_axis_lag.copy()
@@ -156,13 +205,50 @@ def polynomial_regression_on_lag(cleaned_fine_lag_arr, polynomial_degree):
     original_raw_lag = original_raw_lag[not_nan_idx]
     x_axis_lag = x_axis_lag[not_nan_idx]
 
-    # Transform the features to 2nd degree polynomial features
-    poly = PolynomialFeatures(degree=polynomial_degree)
-    X_poly = poly.fit_transform(x_axis_lag)
+    # Rest of your code
+    polynomial_degree = config.POLYNOMIAL_ORDER
+    best_degree = None
+    best_mae = float('inf')
+    best_linear_regression_lag = []
 
+    for degree in polynomial_degree:
+        poly = PolynomialFeatures(degree=degree)
+        X_poly = poly.fit_transform(x_axis_lag)
+        # Create a LinearRegression model and fit it to the polynomial features
+        reg = LinearRegression().fit(X_poly, original_raw_lag)
+        # Predict values
+        X_new_poly = poly.transform(x_axis_lag_copy)
+        linear_regression_lag = reg.predict(X_new_poly)
+
+        # Calculate the mean absolute error
+        mae = mean_absolute_error(x_axis_lag_copy, linear_regression_lag)
+        print("Degree:", degree ," , MAE:",mae)
+
+
+        if mae < best_mae:
+            best_mae = mae
+            best_degree = degree
+            best_linear_regression_lag = linear_regression_lag
+            
+    print("Best Polynomial Degree:", best_degree)
+    print("Best Mean Absolute Error:", best_mae)
+
+    return best_degree
+
+def polynomial_regression_on_lag(best_degree,cleaned_fine_lag_arr):
+    original_raw_lag = copy.deepcopy(cleaned_fine_lag_arr)
+    x_axis_lag = np.arange(len(cleaned_fine_lag_arr)).reshape(-1, 1)
+    x_axis_lag_copy = x_axis_lag.copy()
+
+    # find where y is not nan
+    not_nan_idx = np.where(~np.isnan(original_raw_lag))[0]
+    original_raw_lag = original_raw_lag[not_nan_idx]
+    x_axis_lag = x_axis_lag[not_nan_idx]
+
+    poly = PolynomialFeatures(degree=best_degree)
+    X_poly = poly.fit_transform(x_axis_lag)
     # Create a LinearRegression model and fit it to the polynomial features
     reg = LinearRegression().fit(X_poly, original_raw_lag)
-
     # Predict values
     X_new_poly = poly.transform(x_axis_lag_copy)
     linear_regression_lag = reg.predict(X_new_poly)
@@ -226,81 +312,52 @@ def cut_throughout_data_arr(idun_cut_data, idun_base_cut, lag_positions, cumulat
 
 
 def cut_at_end(
-    prodigy_adjusted_final_arr,
-    prodigy_adjusted_base_final_df,
+    comparisoneeg_adjusted_final_arr,
+    comparisoneeg_adjusted_base_final_df,
     idun_cut_data,
     idun_base_cut_data,
 ):
     # Cut from the end of the longer dataset
-    if len(prodigy_adjusted_final_arr) > len(idun_cut_data):
-        prodigy_adjusted_final_arr = prodigy_adjusted_final_arr[: len(idun_cut_data)]
-        prodigy_adjusted_base_final_df = prodigy_adjusted_base_final_df[
+    if len(comparisoneeg_adjusted_final_arr) > len(idun_cut_data):
+        comparisoneeg_adjusted_final_arr = comparisoneeg_adjusted_final_arr[: len(idun_cut_data)]
+        comparisoneeg_adjusted_base_final_df = comparisoneeg_adjusted_base_final_df[
             : len(idun_cut_data)
         ].reset_index(drop=True)
 
     else:
-        idun_cut_data = idun_cut_data[: len(prodigy_adjusted_final_arr)]
-        idun_base_cut_data = idun_base_cut_data[: len(prodigy_adjusted_final_arr)]
+        idun_cut_data = idun_cut_data[: len(comparisoneeg_adjusted_final_arr)]
+        idun_base_cut_data = idun_base_cut_data[: len(comparisoneeg_adjusted_final_arr)]
 
     return (
-        prodigy_adjusted_final_arr,
-        prodigy_adjusted_base_final_df,
+        comparisoneeg_adjusted_final_arr,
+        comparisoneeg_adjusted_base_final_df,
         idun_cut_data,
         idun_base_cut_data,
     )
 
 
-def apply_shift_to_data(
-    shift,
-    idun_clipped_data,
-    idun_base_clipped_data,
-    prodigy_clipped_data,
-    prodigy_base_clipped_df,
-):
-    # cut the lag_mean data from the start of idun_clipped_data if it is positive or from the start of if negative
-    if shift < 0:
-        idun_pre_cut_data = idun_clipped_data[-shift:]
-        idun_base_pre_cut_data = idun_base_clipped_data[-shift:]
-        prodigy_pre_cut_data = prodigy_clipped_data[:-(-shift)]
-        prodigy_base_pre_cut_df = prodigy_base_clipped_df[:-(-shift)].reset_index(
-            drop=True
-        )
-    else:
-        idun_pre_cut_data = idun_clipped_data[:-shift]
-        idun_base_pre_cut_data = idun_base_clipped_data[:-shift]
-        prodigy_pre_cut_data = prodigy_clipped_data[shift:]
-        prodigy_base_pre_cut_df = prodigy_base_clipped_df[shift:].reset_index(drop=True)
-
-    return (
-        idun_pre_cut_data,
-        idun_base_pre_cut_data,
-        prodigy_pre_cut_data,
-        prodigy_base_pre_cut_df,
-    )
-
 
 def adjust_data_by_mean_lag(
     mean_final_lag,
-    prodigy_adjusted_final_arr,
-    prodigy_adjusted_base_final_df,
+    comparisoneeg_adjusted_final_arr,
+    comparisoneeg_adjusted_base_final_df,
     idun_adjusted_final_arr,
     idun_adjusted_base_final_arr,
 ):
-    if mean_final_lag > 0:
-        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[int(mean_final_lag) :]
-        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+    if int(mean_final_lag) > 0:
+        shifted_final_comparisoneeg_arr = comparisoneeg_adjusted_final_arr[int(mean_final_lag) :]
+        shifted_final_comparisoneeg_base_df = comparisoneeg_adjusted_base_final_df[
             int(mean_final_lag) :
         ].reset_index(drop=True)
-
         shifted_final_idun_arr = idun_adjusted_final_arr[: -int(mean_final_lag)]
         shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
             : -int(mean_final_lag)
         ]
-    else:
-        shifted_final_prodigy_arr = prodigy_adjusted_final_arr[
+    elif int(mean_final_lag) < 0:
+        shifted_final_comparisoneeg_arr = comparisoneeg_adjusted_final_arr[
             : -(-int(mean_final_lag))
         ]
-        shifted_final_prodigy_base_df = prodigy_adjusted_base_final_df[
+        shifted_final_comparisoneeg_base_df = comparisoneeg_adjusted_base_final_df[
             : -(-int(mean_final_lag))
         ].reset_index(drop=True)
 
@@ -308,54 +365,93 @@ def adjust_data_by_mean_lag(
         shifted_final_idun_base_arr = idun_adjusted_base_final_arr[
             -int(mean_final_lag) :
         ]
+    else: 
+        shifted_final_comparisoneeg_arr = comparisoneeg_adjusted_final_arr
+        shifted_final_comparisoneeg_base_df = comparisoneeg_adjusted_base_final_df
+        shifted_final_idun_arr = idun_adjusted_final_arr
+        shifted_final_idun_base_arr = idun_adjusted_base_final_arr
+
 
     return (
-        shifted_final_prodigy_arr,
-        shifted_final_prodigy_base_df,
+        shifted_final_comparisoneeg_arr,
+        shifted_final_comparisoneeg_base_df,
         shifted_final_idun_arr,
         shifted_final_idun_base_arr,
     )
 
 
 def equalize_data_length(
-    prodigy_filtered_data_rs,
+    comparisoneeg_filtered_data_rs,
     idun_filtered_data,
     idun_base_data,
-    prodigy_base_data_df,
+    comparisoneeg_base_data_df,
     config,
+    comparisoneeg_time_stamps,
+    idun_time_stamps
+
 ):
-    prodigy_clipped_data = copy.deepcopy(prodigy_filtered_data_rs)
+    comparisoneeg_clipped_data = copy.deepcopy(comparisoneeg_filtered_data_rs)
     idun_clipped_data = copy.deepcopy(idun_filtered_data)
     idun_base_clipped_data = copy.deepcopy(idun_base_data)
-    prodigy_base_clipped_df = copy.deepcopy(prodigy_base_data_df)
+    comparisoneeg_base_clipped_df = copy.deepcopy(comparisoneeg_base_data_df)
 
-    # Find which one is longer and how much longer
-    if len(prodigy_clipped_data) > len(idun_clipped_data):
-        diff = int(len(prodigy_clipped_data) - len(idun_clipped_data))
-        prodigy_clipped_data = prodigy_clipped_data[int(diff / 2) : int(-diff / 2)]
-        prodigy_base_clipped_df = prodigy_base_clipped_df[
-            int(diff / 2) : int(-diff / 2)
-        ].reset_index(drop=True)
-        print(
-            f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of Prodigy data"
-        )
+    timestamp_diff = comparisoneeg_time_stamps[0] - idun_time_stamps[0]
+    if timestamp_diff >= 0:
+            # comparisonEEG starts before IDUN
+        comparisoneeg_clipped_data = comparisoneeg_clipped_data[int(timestamp_diff/config.BASE_SAMPLE_RATE):-1]
+        comparisoneeg_base_clipped_df = comparisoneeg_base_clipped_df[int(timestamp_diff/config.BASE_SAMPLE_RATE):-1].reset_index(drop=True)
+    elif timestamp_diff < 0:
+        # IDUN starts before comparisonEEG
+        idun_clipped_data = idun_clipped_data[int(timestamp_diff/config.BASE_SAMPLE_RATE):-1]
+        idun_base_clipped_data = idun_base_clipped_data[int(timestamp_diff/config.BASE_SAMPLE_RATE):-1].reset_index(drop=True)
+
+    # Now I make everything of the same lenght! 
+
+    # Find which one is longer and how much longer, I've already done the resampling 
+    if len(comparisoneeg_clipped_data) > len(idun_clipped_data):
+        diff = int(len(comparisoneeg_clipped_data) - len(idun_clipped_data))
+        if config.CUT == 'equal':
+            # I cut the same amount of signal at the beginning and at the end
+            comparisoneeg_clipped_data = comparisoneeg_clipped_data[int(diff / 2) : int(-diff / 2)]
+            comparisoneeg_base_clipped_df = comparisoneeg_base_clipped_df[
+                int(diff / 2) : int(-diff / 2)
+            ].reset_index(drop=True)
+            print(
+            f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting the Prodigy data from the beginning and the end"
+            )
+        else:
+            # I cut the longer signal only at the end
+            comparisoneeg_clipped_data = comparisoneeg_clipped_data[0:len(idun_clipped_data)]
+            comparisoneeg_base_clipped_df = comparisoneeg_base_clipped_df[0:len(idun_clipped_data)].reset_index(drop=True)
+            print(
+                f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of Prodigy data"
+            )
     else:
-        diff = int(len(idun_clipped_data) - len(prodigy_clipped_data))
-        idun_clipped_data = idun_clipped_data[int(diff / 2) : int(-diff / 2)]
-        idun_base_clipped_data = idun_base_clipped_data[int(diff / 2) : int(-diff / 2)]
-        print(
-            f"IDUN data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of IDUN data"
-        )
+        diff = int(len(idun_clipped_data) - len(comparisoneeg_clipped_data))
+        if config.CUT == 'equal':
+            # I cut the same amount of signal at the beginning and at the end
+            idun_clipped_data = idun_clipped_data[int(diff / 2) : int(-diff / 2)]
+            idun_base_clipped_data = idun_base_clipped_data[int(diff / 2) : int(-diff / 2)]
+            print(
+            f"Comparison data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting the IDUN data from the beginning and the end"
+            )
+        else: 
+            # I cut the longer signal only at the end
+            idun_clipped_data = idun_clipped_data[0:len(comparisoneeg_clipped_data)]
+            idun_base_clipped_data = idun_base_clipped_data[0:len(comparisoneeg_clipped_data)]
+            print(
+                f"IDUN data is longer with {diff/config.BASE_SAMPLE_RATE} seconds, cutting from end of IDUN data"
+            )
 
     same_times = np.linspace(
         0, len(idun_clipped_data) / config.BASE_SAMPLE_RATE, len(idun_clipped_data)
     )
 
     return (
-        prodigy_clipped_data,
+        comparisoneeg_clipped_data,
         idun_clipped_data,
         idun_base_clipped_data,
-        prodigy_base_clipped_df,
+        comparisoneeg_base_clipped_df,
         same_times,
     )
 
