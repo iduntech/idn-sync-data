@@ -38,10 +38,14 @@ def calculate_epochs_lag(base_epochs, compare_epochs):
     lag_arr = []
     max_corr_arr = []
     for idx, epoch in enumerate(base_epochs):
-        corr, max_corr, lag = calculate_lag(epoch, compare_epochs[idx])
-        max_corr_arr.append(max_corr)
-        correlation_arr.append(corr)
-        lag_arr.append(lag)
+        try:
+            corr, max_corr, lag = calculate_lag(epoch, compare_epochs[idx])
+            max_corr_arr.append(max_corr)
+            correlation_arr.append(corr)
+            lag_arr.append(lag)
+        except IndexError:
+            print("End of shorter data reached")
+            break
     return correlation_arr, max_corr_arr, lag_arr
 
 
