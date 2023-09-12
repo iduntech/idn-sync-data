@@ -312,6 +312,62 @@ def cut_throughout_data(
     return prodigy_cut_data_list, prodigy_base_cut_df
 
 
+def cut_throughout_data_dual(
+    idun_cut_data,
+    idun_base_cut_data,
+    comparison_cut_data,
+    comparison_base_cut_df,
+    lag_positions,
+    lag_sizes,
+):
+    idun_cut_data_list = idun_cut_data.tolist()
+    comparison_cut_data_list = comparison_cut_data.tolist()
+    for i in range(len(lag_positions)):
+        start_index = lag_positions[i]
+
+        if lag_sizes[i] < 0:
+            # Negative lag_size: prune IDUN data
+            n_replace = abs(lag_sizes[i])
+            for j in range(n_replace):
+                if start_index + j < len(idun_cut_data_list):
+                    idun_cut_data_list[start_index + j] = np.nan
+                    idun_base_cut_data[start_index + j] = np.nan
+        else:
+            # Positive lag_size: prune comparison data
+            n_replace = lag_sizes[i]
+            for j in range(n_replace):
+                if start_index + j < len(comparison_cut_data_list):
+                    comparison_cut_data_list[start_index + j] = np.nan
+                    comparison_base_cut_df.iloc[start_index + j] = np.nan
+
+    # Convert back to numpy arrays and remove np.nan values
+    idun_cut_data_list = np.array(idun_cut_data_list)
+    remove_positions = ~np.isnan(idun_cut_data_list)
+    idun_cut_data_list = idun_cut_data_list[remove_positions]
+    idun_base_cut_data = idun_base_cut_data[remove_positions]
+
+    comparison_cut_data_list = np.array(comparison_cut_data_list)
+    comparison_cut_data_list = comparison_cut_data_list[
+        ~np.isnan(comparison_cut_data_list)
+    ]
+    comparison_base_cut_df = comparison_base_cut_df.dropna()
+
+    # cut at the end of the longer datasets
+    if len(comparison_cut_data_list) > len(idun_cut_data_list):
+        comparison_cut_data_list = comparison_cut_data_list[: len(idun_cut_data_list)]
+        comparison_base_cut_df = comparison_base_cut_df[: len(idun_cut_data_list)]
+    else:
+        idun_cut_data_list = idun_cut_data_list[: len(comparison_cut_data_list)]
+        idun_base_cut_data = idun_base_cut_data[: len(comparison_cut_data_list)]
+
+    return (
+        idun_cut_data_list,
+        idun_base_cut_data,
+        comparison_cut_data_list,
+        comparison_base_cut_df,
+    )
+
+
 def cut_throughout_data_arr(
     idun_cut_data, idun_base_cut, lag_positions, cumulative_lags
 ):
@@ -342,6 +398,31 @@ def cut_throughout_data_arr(
     idun_base_cut_array = np.array(idun_base_cut_list)
     idun_base_cut_array = idun_base_cut_array[~np.isnan(idun_base_cut_array)]
     return idun_cut_data_array, idun_base_cut_array
+
+
+def interpolate_signal(raw_signal):
+    # deepcopy the signal
+    signal = copy.deepcopy(raw_signal)
+    # Convert the signal into a pandas Series
+    s = pd.Series(signal)
+
+    # Interpolate the nan values using linear method
+    s.interpolate(method="linear", inplace=True)
+
+    # Backfill and forward fill for the start and end nans respectively
+    s.fillna(method="bfill", inplace=True)
+    s.fillna(method="ffill", inplace=True)
+
+    return s.values
+
+
+def smooth(data, window_size=3):
+    if window_size < 2:  # No smoothing needed
+        return data
+    s = np.r_[data[window_size - 1 : 0 : -1], data, data[-2 : -window_size - 1 : -1]]
+    w = np.ones(window_size, "d")
+    y = np.convolve(w / w.sum(), s, mode="valid")
+    return y[int((window_size / 2) - 1) : -int(window_size / 2)]
 
 
 def cut_at_end(
