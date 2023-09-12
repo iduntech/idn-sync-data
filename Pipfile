@@ -11,6 +11,7 @@ pandas = "*"
 scipy = "*"
 mne = "*"
 scikit-learn = "*"
+pyxdf = "*"
 
 [dev-packages]
 black = {version = "*", extras = ["jupyter"]}
