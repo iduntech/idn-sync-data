@@ -38,10 +38,14 @@ def calculate_epochs_lag(base_epochs, compare_epochs):
     lag_arr = []
     max_corr_arr = []
     for idx, epoch in enumerate(base_epochs):
-        corr, max_corr, lag = calculate_lag(epoch, compare_epochs[idx])
-        max_corr_arr.append(max_corr)
-        correlation_arr.append(corr)
-        lag_arr.append(lag)
+        try:
+            corr, max_corr, lag = calculate_lag(epoch, compare_epochs[idx])
+            max_corr_arr.append(max_corr)
+            correlation_arr.append(corr)
+            lag_arr.append(lag)
+        except IndexError:
+            print("End of shorter data reached")
+            break
     return correlation_arr, max_corr_arr, lag_arr
 
 
@@ -139,18 +143,6 @@ def prepare_comparison_data(
         len(comparisoneeg_filtered_data_rs),
     )
 
-    # if config.DEVICE != 'PRODIGY':
-    #     comparisoneeg_base_data_resampled_single = []
-    #     for i in range(0,len(comparisoneeg_base_data_resampled.columns)-5):
-    #         comparisoneeg_base_data_single_column = do_highpass(
-    #             comparisoneeg_base_data_resampled[comparisoneeg_base_data_resampled.columns[i]], config.HIGHPASS_FREQ, config.BASE_SAMPLE_RATE
-    #         )
-    #         comparisoneeg_base_data_resampled_single.append(comparisoneeg_base_data_single_column)
-
-    #     comparisoneeg_base_data_resampled1 = pd.DataFrame(comparisoneeg_base_data_resampled_single,columns= comparisoneeg_base_data_resampled.columns)
-
-    # create a pandas dataframe with prodigy_channel_names as column names and prodigy_data
-    # comparisoneeg_data = pd.DataFrame(comparisoneeg_data.T, columns=prodigy_channel_names) # penso che questo sia sbagliato
     return (
         comparisoneeg_base_data_resampled,
         comparisoneeg_filtered_data_rs,
@@ -308,6 +300,62 @@ def cut_throughout_data(
     return prodigy_cut_data_list, prodigy_base_cut_df
 
 
+def cut_throughout_data_dual(
+    idun_cut_data,
+    idun_base_cut_data,
+    comparison_cut_data,
+    comparison_base_cut_df,
+    lag_positions,
+    lag_sizes,
+):
+    idun_cut_data_list = idun_cut_data.tolist()
+    comparison_cut_data_list = comparison_cut_data.tolist()
+    for i in range(len(lag_positions)):
+        start_index = lag_positions[i]
+
+        if lag_sizes[i] < 0:
+            # Negative lag_size: prune IDUN data
+            n_replace = abs(lag_sizes[i])
+            for j in range(n_replace):
+                if start_index + j < len(idun_cut_data_list):
+                    idun_cut_data_list[start_index + j] = np.nan
+                    idun_base_cut_data[start_index + j] = np.nan
+        else:
+            # Positive lag_size: prune comparison data
+            n_replace = lag_sizes[i]
+            for j in range(n_replace):
+                if start_index + j < len(comparison_cut_data_list):
+                    comparison_cut_data_list[start_index + j] = np.nan
+                    comparison_base_cut_df.iloc[start_index + j] = np.nan
+
+    # Convert back to numpy arrays and remove np.nan values
+    idun_cut_data_list = np.array(idun_cut_data_list)
+    remove_positions = ~np.isnan(idun_cut_data_list)
+    idun_cut_data_list = idun_cut_data_list[remove_positions]
+    idun_base_cut_data = idun_base_cut_data[remove_positions]
+
+    comparison_cut_data_list = np.array(comparison_cut_data_list)
+    comparison_cut_data_list = comparison_cut_data_list[
+        ~np.isnan(comparison_cut_data_list)
+    ]
+    comparison_base_cut_df = comparison_base_cut_df.dropna()
+
+    # cut at the end of the longer datasets
+    if len(comparison_cut_data_list) > len(idun_cut_data_list):
+        comparison_cut_data_list = comparison_cut_data_list[: len(idun_cut_data_list)]
+        comparison_base_cut_df = comparison_base_cut_df[: len(idun_cut_data_list)]
+    else:
+        idun_cut_data_list = idun_cut_data_list[: len(comparison_cut_data_list)]
+        idun_base_cut_data = idun_base_cut_data[: len(comparison_cut_data_list)]
+
+    return (
+        idun_cut_data_list,
+        idun_base_cut_data,
+        comparison_cut_data_list,
+        comparison_base_cut_df,
+    )
+
+
 def cut_throughout_data_arr(
     idun_cut_data, idun_base_cut, lag_positions, cumulative_lags
 ):
@@ -338,6 +386,31 @@ def cut_throughout_data_arr(
     idun_base_cut_array = np.array(idun_base_cut_list)
     idun_base_cut_array = idun_base_cut_array[~np.isnan(idun_base_cut_array)]
     return idun_cut_data_array, idun_base_cut_array
+
+
+def interpolate_signal(raw_signal):
+    # deepcopy the signal
+    signal = copy.deepcopy(raw_signal)
+    # Convert the signal into a pandas Series
+    s = pd.Series(signal)
+
+    # Interpolate the nan values using linear method
+    s.interpolate(method="linear", inplace=True)
+
+    # Backfill and forward fill for the start and end nans respectively
+    s.fillna(method="bfill", inplace=True)
+    s.fillna(method="ffill", inplace=True)
+
+    return s.values
+
+
+def smooth(data, window_size=3):
+    if window_size < 2:  # No smoothing needed
+        return data
+    s = np.r_[data[window_size - 1 : 0 : -1], data, data[-2 : -window_size - 1 : -1]]
+    w = np.ones(window_size, "d")
+    y = np.convolve(w / w.sum(), s, mode="valid")
+    return y[int((window_size / 2) - 1) : -int(window_size / 2)]
 
 
 def cut_at_end(
@@ -555,3 +628,41 @@ def clean_data_from_spikes(data, threshold):
     data = make_discontinuous(data, discontinuous_indices)
     data = np.array(data)
     return data
+
+def manual_sync(comparison_clipped_data, idun_clipped_data, idun_base_clipped_data, comparison_base_clipped_df, config):
+    CUT_AMOUNT = int(config.MANUAL_SHIFT * config.BASE_SAMPLE_RATE)
+    if CUT_AMOUNT > 0:
+        print("Cutting from the beginning of the data idun data")
+        idun_base_clipped_data_manual = idun_base_clipped_data[CUT_AMOUNT:]
+        idun_clipped_data_manual = idun_clipped_data[CUT_AMOUNT:]
+
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[:-CUT_AMOUNT].reset_index(
+            drop=True
+        )
+        comparison_clipped_data_manual = comparison_clipped_data[:-CUT_AMOUNT]
+        
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    elif CUT_AMOUNT < 0:
+        print("Cutting from the end of the data idun data")
+        comparison_clipped_data_manual = comparison_clipped_data[-CUT_AMOUNT:]
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[-CUT_AMOUNT:].reset_index(
+            drop=True
+        )
+        idun_clipped_data_manual = idun_clipped_data[:CUT_AMOUNT]
+        idun_base_clipped_data_manual = idun_base_clipped_data[:CUT_AMOUNT]
+        
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    else:
+        print("No cutting")
+        idun_base_clipped_data_manual = copy.deepcopy(idun_base_clipped_data)
+        comparison_base_clipped_df_manual = copy.deepcopy(comparison_base_clipped_df)
+        comparison_clipped_data_manual = copy.deepcopy(comparison_clipped_data)
+        idun_clipped_data_manual = copy.deepcopy(idun_clipped_data)
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    return comparison_clipped_data_manual, idun_clipped_data_manual, idun_base_clipped_data_manual, comparison_base_clipped_df_manual, same_times
