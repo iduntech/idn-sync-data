@@ -640,3 +640,41 @@ def clean_data_from_spikes(data, threshold):
     data = make_discontinuous(data, discontinuous_indices)
     data = np.array(data)
     return data
+
+def manual_sync(comparison_clipped_data, idun_clipped_data, idun_base_clipped_data, comparison_base_clipped_df, config):
+    CUT_AMOUNT = int(config.MANUAL_SHIFT * config.BASE_SAMPLE_RATE)
+    if CUT_AMOUNT > 0:
+        print("Cutting from the beginning of the data idun data")
+        idun_base_clipped_data_manual = idun_base_clipped_data[CUT_AMOUNT:]
+        idun_clipped_data_manual = idun_clipped_data[CUT_AMOUNT:]
+
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[:-CUT_AMOUNT].reset_index(
+            drop=True
+        )
+        comparison_clipped_data_manual = comparison_clipped_data[:-CUT_AMOUNT]
+        
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    elif CUT_AMOUNT < 0:
+        print("Cutting from the end of the data idun data")
+        comparison_clipped_data_manual = comparison_clipped_data[-CUT_AMOUNT:]
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[-CUT_AMOUNT:].reset_index(
+            drop=True
+        )
+        idun_clipped_data_manual = idun_clipped_data[:CUT_AMOUNT]
+        idun_base_clipped_data_manual = idun_base_clipped_data[:CUT_AMOUNT]
+        
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    else:
+        print("No cutting")
+        idun_base_clipped_data_manual = copy.deepcopy(idun_base_clipped_data)
+        comparison_base_clipped_df_manual = copy.deepcopy(comparison_base_clipped_df)
+        comparison_clipped_data_manual = copy.deepcopy(comparison_clipped_data)
+        idun_clipped_data_manual = copy.deepcopy(idun_clipped_data)
+        same_times = np.linspace(
+            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+        )
+    return comparison_clipped_data_manual, idun_clipped_data_manual, idun_base_clipped_data_manual, comparison_base_clipped_df_manual, same_times
