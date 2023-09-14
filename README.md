@@ -1,77 +1,50 @@
-## Data Stream Synchronization Script
 
----
+
+## EEG Data Processing and Synchronization
 
 ### Overview:
+This code processes EEG data, syncing data from different sources, and outputs the results as a CSV file. The primary data sources are `.edf` and `.xdf` files, but it also accepts `.csv` inputs.
 
-This script is designed to synchronize two data streams, Prodigy and IDUN. It works by first unpacking the raw data from these sources, followed by making the datasets equal in length. Subsequent steps involve manual and automated adjustments to align the two datasets.
 
----
+This script is designed for the synchronization of EEG data from multiple sources. Leveraging the method of cross-correlation, the script quantifies the lag between datasets, ensuring precise alignment. To correct any mismatches, every 30 seconds, one to five samples are removed from the dataset that's leading in time. After processing, the synchronized data from both sources are merged and saved as a `.csv` file.
 
-### Key Steps:
+### Pre-requisites:
+Ensure that necessary libraries such as `glob`, `os`, `mne`, `pyxdf`, and `numpy` are imported.
 
-1. **Data Acquisition**: Read raw data files (in EDF and CSV formats) for the specified subject and night.
+### Steps:
 
-2. **Unpacking Data**:
-    - Extract Prodigy data and perform FFT preparation.
-    - Extract IDUN data.
+Overview:
 
-3. **Data Length Equalization**: Ensure that Prodigy and IDUN data have the same length.
+1. Configuration: 
+    - Specifies the target folder, subject, night, and file type.
+  
+2. Data Loading: 
+    - Checks and loads EEG data from `.edf` and `.xdf` file formats present in the specified directory.
+    - Loads corresponding EEG data from a `.csv` file.
 
-4. **Data Shifting**:
-    - Apply an initial shift to align data streams.
-    - Calculate lag between data streams.
-    - Cut data based on initial lag analysis.
+3. Data Preprocessing: 
+    - Extracts and prepares data from the loaded files, filtering and transforming them for synchronization.
 
-5. **Data Synchronization**:
-    - Perform fine-grained synchronization.
-    - Clean lag estimations and fit a polynomial regression.
-    - Use linear regression to estimate the difference in sampling rates.
-    - Cut the data throughout and at the end based on the estimated difference.
+4. Data Synchronization:
+    - Equalizes the length of the two data sources.
+    - Performs a coarse synchronization, followed by a more fine-grained synchronization.
+    - Adjusts for discrepancies in sampling rates.
 
-6. **Final Validation and Visualization**:
-    - Adjust data using the final mean lag.
-    - Plot the synchronized datasets for verification.
+5. Data Finalization:
+    - Makes final adjustments based on calculated lags.
+    - Merges synchronized data from both sources into a single DataFrame.
 
----
+6. Output:
+    - Saves the synchronized data to a `.csv` file.
 
-### Required Libraries:
+Note: For in-depth details, refer to the comments and markdown cells within the script.
+-----------------------------------------------------------------
 
-- `glob`
-- `os`
-- `numpy as np`
-- `mne`
-- `copy`
 
-### Configuration:
-
-Ensure that `config` is properly set up with necessary configurations such as `FILTER_RANGE`, `BASE_SAMPLE_RATE`, `FIRST_LAG_EPOCH_SIZE`, and other parameters.
+### Outputs:
+1. A CSV file named `{subject}_{night}_synced_data.csv` in the directory defined by the `folder`, `subject`, and `night` parameters.
+2. Various visualizations to aid in understanding the processed data.
 
 ---
 
-### Usage:
-
-1. Ensure your working directory contains the folder structure as: `01_Pre_study/S005/night3`.
-2. Ensure that the `config` variable has been set up appropriately.
-3. Modify the `SHIFT_SECONDS` value if needed.
-4. Modify other parameters like `DISCONTINUITY_THRESHOLD` and `POLYNOMIAL_DEGREE` as necessary.
-5. Run the script to process the data and synchronize the two streams.
-6. View the final synchronized and filtered data.
-
----
-
-### Important:
-
-- The script includes sections for manual shifting. Ensure to review and adjust as necessary.
-- Always back up raw data before applying any modifications.
-- It is advisable to verify the synchronized data by visual inspection to ensure that the algorithm has aligned the two data streams accurately.
-
----
-
-### Feedback and Contributions:
-
-Feedback and contributions are welcome. If you find any issues or potential improvements, please open an issue or submit a pull request.
-
---- 
-
-Note: This README provides a general overview and guide for using the provided script. Ensure to understand each step of the script before using it on critical data.
+Note: For a comprehensive understanding, one would ideally need to see the complete set of functions that are called within this script (e.g., `get_device_configuration()`, `sync_start_and_equalize_data_length()`, etc.), their implementations, and associated configurations stored in the `config` variable. This README provides a high-level understanding of the code's main flow and operations.

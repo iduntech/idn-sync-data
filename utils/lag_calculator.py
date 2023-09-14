@@ -143,18 +143,6 @@ def prepare_comparison_data(
         len(comparisoneeg_filtered_data_rs),
     )
 
-    # if config.DEVICE != 'PRODIGY':
-    #     comparisoneeg_base_data_resampled_single = []
-    #     for i in range(0,len(comparisoneeg_base_data_resampled.columns)-5):
-    #         comparisoneeg_base_data_single_column = do_highpass(
-    #             comparisoneeg_base_data_resampled[comparisoneeg_base_data_resampled.columns[i]], config.HIGHPASS_FREQ, config.BASE_SAMPLE_RATE
-    #         )
-    #         comparisoneeg_base_data_resampled_single.append(comparisoneeg_base_data_single_column)
-
-    #     comparisoneeg_base_data_resampled1 = pd.DataFrame(comparisoneeg_base_data_resampled_single,columns= comparisoneeg_base_data_resampled.columns)
-
-    # create a pandas dataframe with prodigy_channel_names as column names and prodigy_data
-    # comparisoneeg_data = pd.DataFrame(comparisoneeg_data.T, columns=prodigy_channel_names) # penso che questo sia sbagliato
     return (
         comparisoneeg_base_data_resampled,
         comparisoneeg_filtered_data_rs,
