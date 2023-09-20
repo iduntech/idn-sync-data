@@ -38,7 +38,7 @@ def edf_info_all_channels(dataset: np.ndarray, chanlocs: list, sample_freq:250, 
 
 
 # function to individual channels for edfwriter
-def edf_info_single_channel(dataset: np.ndarray, chanlocs: list, sample_freq:250, dimension:'uV'):
+def edf_info_single_channel(dataset: np.ndarray, chanloc: list, sample_freq:250, dimension:'uV'):
     '''
     This function prepares the signal header for an individual channel that prepares it for .edf conversion.
 
@@ -55,8 +55,8 @@ def edf_info_single_channel(dataset: np.ndarray, chanlocs: list, sample_freq:250
 
     signal_header = highlevel.make_signal_header(chanloc, 
                                                dimension = dimension,
-                                               sample_frequency=sampFreq, 
-                                               sample_rate=sampFreq,
+                                               sample_frequency=sample_freq, 
+                                               sample_rate=sample_freq,
                                                physical_max = 1,
                                                physical_min = 1,
                                                )
