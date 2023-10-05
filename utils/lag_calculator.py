@@ -79,12 +79,18 @@ def replace_outliers(data, strictness=0.5):
 
 def convert_data_to_array(comparisoneeg_raw_data, file_extention):
     if file_extention == "edf":
-        comparisoneeg_data, _ = comparisoneeg_raw_data[:, :]
+        # Convert the list of arrays into a NumPy array of arrays
+        comparisoneeg_data = np.array(comparisoneeg_raw_data[0])
+
+        #comparisoneeg_data, _ = comparisoneeg_raw_data[:, :]
         comparisoneeg_data = (
             comparisoneeg_data.T
-        )  # TODO: Make that input to this function is an array and the channels
+        )
+        # TODO: Make that input to this function is an array and the channels
         # TODO: This is so that this function will work on full scalp as well as prodigy
-        comparisoneeg_channel_names = comparisoneeg_raw_data.ch_names
+        #comparisoneeg_channel_names = comparisoneeg_raw_data.ch_names
+        comparisoneeg_channel_names = comparisoneeg_raw_data[1]
+        
     elif file_extention == "xdf":
         comparisoneeg_data = comparisoneeg_raw_data[0]["time_series"]
         n_channel = int(comparisoneeg_raw_data[0]["info"]["channel_count"][0])
