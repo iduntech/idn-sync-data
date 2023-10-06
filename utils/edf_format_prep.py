@@ -1,12 +1,18 @@
 ### This script is required because we want to import .edf files using pyedflib, but want to match
-### the resulting format to look like it has been imported by MNE (because MNE was used initally to 
+### the resulting format to look like it has been imported by MNE (because MNE was used initally to
 ### import data).
 import numpy as np
 from scipy.signal import resample
 
 
-def pyedflib2mne(pyedflib_data: np.ndarray, chan_name: str, target_length: int, sample_freq:int, dimension:str):
-    '''
+def pyedflib_to_mne(
+    pyedflib_data: np.ndarray,
+    chan_name: str,
+    target_length: int,
+    sample_freq: int,
+    dimension: str,
+):
+    """
     This function resamples channels that are not matching the prodigy target sampling frequency (120Hz).
 
     Parameters:
@@ -18,7 +24,7 @@ def pyedflib2mne(pyedflib_data: np.ndarray, chan_name: str, target_length: int, 
 
     Returns:
         resampled (or untouched) one dimensional array
-    '''
+    """
     if sample_freq != 120:
         converted_data = resample(pyedflib_data, target_length)
     else:
@@ -27,9 +33,8 @@ def pyedflib2mne(pyedflib_data: np.ndarray, chan_name: str, target_length: int, 
     return converted_data
 
 
-
 def create_timestamp_array(target_length: int, samp_rate: int):
-    '''
+    """
     This function creates an array that increases in 1/120 increments until its length matches the length of the dataset.
 
     Parameters:
@@ -38,8 +43,10 @@ def create_timestamp_array(target_length: int, samp_rate: int):
 
     Returns:
         Timestamp array, each increment is 1/120
-    '''
-    increment = 1/samp_rate # increase in these increments based on prodigy EEG channel sampling rate
-    timestamp_array = np.arange(0, target_length*increment, increment)
+    """
+    increment = (
+        1 / samp_rate
+    )  # increase in these increments based on prodigy EEG channel sampling rate
+    timestamp_array = np.arange(0, target_length * increment, increment)
 
     return timestamp_array
