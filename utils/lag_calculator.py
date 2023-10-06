@@ -10,7 +10,10 @@ from scipy.signal import find_peaks
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
+from pyedflib import highlevel
+from utils.edf_format_prep import pyedflib_to_mne, create_timestamp_array
 import copy
+import pyxdf
 
 
 def calculate_lag(signal_1, signal_2):
@@ -79,12 +82,16 @@ def replace_outliers(data, strictness=0.5):
 
 def convert_data_to_array(comparisoneeg_raw_data, file_extention):
     if file_extention == "edf":
-        comparisoneeg_data, _ = comparisoneeg_raw_data[:, :]
-        comparisoneeg_data = (
-            comparisoneeg_data.T
-        )  # TODO: Make that input to this function is an array and the channels
+        # Convert the list of arrays into a NumPy array of arrays
+        comparisoneeg_data = np.array(comparisoneeg_raw_data[0])
+
+        # comparisoneeg_data, _ = comparisoneeg_raw_data[:, :]
+        comparisoneeg_data = comparisoneeg_data.T
+        # TODO: Make that input to this function is an array and the channels
         # TODO: This is so that this function will work on full scalp as well as prodigy
-        comparisoneeg_channel_names = comparisoneeg_raw_data.ch_names
+        # comparisoneeg_channel_names = comparisoneeg_raw_data.ch_names
+        comparisoneeg_channel_names = comparisoneeg_raw_data[1]
+
     elif file_extention == "xdf":
         comparisoneeg_data = comparisoneeg_raw_data[0]["time_series"]
         n_channel = int(comparisoneeg_raw_data[0]["info"]["channel_count"][0])
@@ -629,32 +636,43 @@ def clean_data_from_spikes(data, threshold):
     data = np.array(data)
     return data
 
-def manual_sync(comparison_clipped_data, idun_clipped_data, idun_base_clipped_data, comparison_base_clipped_df, config):
+
+def manual_sync(
+    comparison_clipped_data,
+    idun_clipped_data,
+    idun_base_clipped_data,
+    comparison_base_clipped_df,
+    config,
+):
     CUT_AMOUNT = int(config.MANUAL_SHIFT * config.BASE_SAMPLE_RATE)
     if CUT_AMOUNT > 0:
         print("Cutting from the beginning of the data idun data")
         idun_base_clipped_data_manual = idun_base_clipped_data[CUT_AMOUNT:]
         idun_clipped_data_manual = idun_clipped_data[CUT_AMOUNT:]
 
-        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[:-CUT_AMOUNT].reset_index(
-            drop=True
-        )
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[
+            :-CUT_AMOUNT
+        ].reset_index(drop=True)
         comparison_clipped_data_manual = comparison_clipped_data[:-CUT_AMOUNT]
-        
+
         same_times = np.linspace(
-            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+            0,
+            len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE,
+            len(idun_clipped_data_manual),
         )
     elif CUT_AMOUNT < 0:
         print("Cutting from the end of the data idun data")
         comparison_clipped_data_manual = comparison_clipped_data[-CUT_AMOUNT:]
-        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[-CUT_AMOUNT:].reset_index(
-            drop=True
-        )
+        comparison_base_clipped_df_manual = comparison_base_clipped_df.iloc[
+            -CUT_AMOUNT:
+        ].reset_index(drop=True)
         idun_clipped_data_manual = idun_clipped_data[:CUT_AMOUNT]
         idun_base_clipped_data_manual = idun_base_clipped_data[:CUT_AMOUNT]
-        
+
         same_times = np.linspace(
-            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+            0,
+            len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE,
+            len(idun_clipped_data_manual),
         )
     else:
         print("No cutting")
@@ -663,6 +681,65 @@ def manual_sync(comparison_clipped_data, idun_clipped_data, idun_base_clipped_da
         comparison_clipped_data_manual = copy.deepcopy(comparison_clipped_data)
         idun_clipped_data_manual = copy.deepcopy(idun_clipped_data)
         same_times = np.linspace(
-            0, len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE, len(idun_clipped_data_manual)
+            0,
+            len(idun_clipped_data_manual) / config.BASE_SAMPLE_RATE,
+            len(idun_clipped_data_manual),
         )
-    return comparison_clipped_data_manual, idun_clipped_data_manual, idun_base_clipped_data_manual, comparison_base_clipped_df_manual, same_times
+    return (
+        comparison_clipped_data_manual,
+        idun_clipped_data_manual,
+        idun_base_clipped_data_manual,
+        comparison_base_clipped_df_manual,
+        same_times,
+    )
+
+
+def load_edf_file(folder, subject, night, original_sample_rate):
+    """
+    Load edf file from the folder
+
+    Args:
+        folder (str): folder name
+        subject (str): subject name
+        night (str): night name
+
+    Returns:
+        list: list of raw data and channel names
+    """
+    edf_file_path = glob.glob(os.path.join(folder, subject, night, "*scoring.edf"))[0]
+    complete_edf_file = highlevel.read_edf(edf_file_path)
+    edf_file_data = complete_edf_file[0]
+    edf_file_chan = complete_edf_file[1]
+    target_length = len(complete_edf_file[0][1])
+    raw_data = []
+    channel_names = []
+    # resample all channels that did not have 120Hz sampling Freq
+    for chan_indx in range(len(edf_file_data)):
+        samp_freq = edf_file_chan[chan_indx]["sample_frequency"]
+        chan_unit = edf_file_chan[chan_indx]["dimension"]
+        channel_data = pyedflib_to_mne(
+            edf_file_data[chan_indx],
+            edf_file_chan[chan_indx],
+            target_length,
+            samp_freq,
+            chan_unit,
+        )
+        raw_data.append(channel_data)
+        channel_names.append(edf_file_chan[chan_indx]["label"])
+    # convert list to np array
+    raw_data = np.vstack(raw_data)
+    comparison_raw_data = []
+    comparison_raw_data.append(raw_data)
+    comparison_raw_data.append(channel_names)
+    comparison_time_stamps = create_timestamp_array(target_length, original_sample_rate)
+    file_extention = "edf"
+    return comparison_raw_data, comparison_time_stamps, file_extention
+
+
+def load_xdf_file(folder, subject, night):
+    xdf_file_path = glob.glob(os.path.join(folder, subject, night, "*.xdf"))[0]
+    print(xdf_file_path)
+    comparison_raw_data, _ = pyxdf.load_xdf(xdf_file_path)
+    comparison_time_stamps = comparison_raw_data[0]["time_stamps"]
+    file_extention = "xdf"
+    return comparison_raw_data, comparison_time_stamps, file_extention
