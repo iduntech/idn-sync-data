@@ -518,30 +518,29 @@ def sync_data_start_same_time(
         idun_base_clipped_data = idun_base_clipped_data[
             int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
         ].reset_index(drop=True)
-    
-    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0: # prodigy
+
+    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0:  # prodigy
         next_step = True
-    else: 
-        next_step = False #mbt 
+    else:
+        next_step = False  # mbt
     return (
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step
+        next_step,
     )
 
-def check_timestamp(
-    comparisoneeg_time_stamps,
-    idun_time_stamps
-):
-    timestamp_diff = comparisoneeg_time_stamps[0] - idun_time_stamps[0] 
-    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0: # ex. prodigy
-        next_step = True
-    else: 
-        next_step = False # ex. mbt
-    
-    return(next_step)
+
+def check_timestamp(comparisoneeg_time_stamps, idun_time_stamps):
+    timestamp_diff = comparisoneeg_time_stamps[0] - idun_time_stamps[0]
+    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0:  # ex. prodigy
+        next_step = False
+    else:
+        next_step = True  # ex. mbt
+
+    return next_step
+
 
 def cut_ends_to_same_length(
     comparisoneeg_clipped_data,
@@ -600,7 +599,7 @@ def sync_start_and_equalize_data_length(
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step
+        next_step,
     ) = sync_data_start_same_time(
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
@@ -629,9 +628,9 @@ def sync_start_and_equalize_data_length(
     )
 
     if next_step == True:
-        print('Search for a better alignment')
+        print("Search for a better alignment")
     else:
-        print('First alignment completed')
+        print("First alignment completed")
 
     return (
         comparisoneeg_clipped_data,
@@ -639,7 +638,7 @@ def sync_start_and_equalize_data_length(
         idun_base_clipped_data,
         comparisoneeg_base_clipped_df,
         same_times,
-        next_step
+        next_step,
     )
 
 
@@ -668,7 +667,7 @@ def manual_sync(
     idun_base_clipped_data,
     comparison_base_clipped_df,
     config,
-    MANUAL_SHIFT
+    MANUAL_SHIFT,
 ):
     CUT_AMOUNT = int(MANUAL_SHIFT * config.BASE_SAMPLE_RATE)
     if CUT_AMOUNT > 0:
@@ -770,13 +769,14 @@ def load_xdf_file(folder, subject, night):
     file_extention = "xdf"
     return comparison_raw_data, comparison_time_stamps, file_extention
 
+
 def manual_sync_automatic(
     comparison_clipped_data,
     idun_clipped_data,
     idun_base_clipped_data,
     comparison_base_clipped_df,
     shift,
-    ):
+):
     CUT_AMOUNT = int(shift * config.BASE_SAMPLE_RATE)
     if CUT_AMOUNT > 0:
         print("Cutting from the beginning of the data idun data")
@@ -826,23 +826,46 @@ def manual_sync_automatic(
         same_times,
     )
 
+def plot_sync_results(lag_arr_copy,shift,config):
+    plt.figure(figsize=(15, 2))
+    plot_time_arr = np.linspace(
+        0, len(lag_arr_copy) * config.FIRST_LAG_EPOCH_SIZE, len(lag_arr_copy)
+    )
+    # convert  to seconds
+    plot_time_arr = plot_time_arr / config.BASE_SAMPLE_RATE
+    plt.title(f"Lag over time with shift: {shift}")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Lag (s)")
+    plt.plot(plot_time_arr, np.array(lag_arr_copy) / config.BASE_SAMPLE_RATE)
+    plt.show()
+    
+def custom_sort(arr):
+    arr.sort(key=lambda x: (abs(x), -x))
+    return arr[::-1]
 
-def find_automatic_alignment(SHIFT,comparison_clipped_data,idun_clipped_data,idun_base_clipped_data,comparison_base_clipped_df,right_shift,
-    comparison_clipped_data_manual_r,
-    idun_clipped_data_manual_r,
-    idun_base_clipped_data_manual_r,
-    comparison_base_clipped_df_manual_r,
-    same_times_r,
-    len_max,
-    lag_arr_r):
-    for shift in SHIFT:
-        print('####### Analysing',shift,'####################')
+def find_automatic_alignment(
+    comparison_clipped_data,
+    idun_clipped_data,
+    idun_base_clipped_data,
+    comparison_base_clipped_df,
+    config
+    ):
+    
+    SHIFT_SIGN = [-60, 60]
+    SHIFTS = list(range(SHIFT_SIGN[0], SHIFT_SIGN[1], 20))
+    SHIFTS = custom_sort(SHIFTS)
+    SYNCED_LOSS_THRESH = 0.5
+
+    for shift in SHIFTS:
+        print("\n------------------------")
+        print(f"Testing shift of: {shift}s")
+        print("------------------------")
         (
-        comparison_clipped_data_manual,
-        idun_clipped_data_manual,
-        idun_base_clipped_data_manual,
-        comparison_base_clipped_df_manual,
-        same_times,
+            comparison_clipped_data_manual,
+            idun_clipped_data_manual,
+            idun_base_clipped_data_manual,
+            comparison_base_clipped_df_manual,
+            same_times,
         ) = manual_sync_automatic(
             comparison_clipped_data,
             idun_clipped_data,
@@ -858,55 +881,31 @@ def find_automatic_alignment(SHIFT,comparison_clipped_data,idun_clipped_data,idu
         comparison_epochs = epoch_data(comparison_clipped_temp_data, search_size)
         idun_epochs = epoch_data(idun_clipped_temp_data, search_size)
 
-        correlation_arr, max_corr_arr, lag_arr = calculate_epochs_lag(
-        comparison_epochs, idun_epochs
+        _, _, lag_arr = calculate_epochs_lag(
+            comparison_epochs, idun_epochs
         )
         lag_arr_copy = lag_arr[1:].copy()
 
-        plt.figure(figsize=(15, 2))
-        # create a time array based on config.FIRST_LAG_EPOCH_SIZE and length of lag_arr_copy
-        plot_time_arr = np.linspace(
-            0, len(lag_arr_copy) * config.FIRST_LAG_EPOCH_SIZE, len(lag_arr_copy)
-        )
-        # convert  to seconds
-        plot_time_arr = plot_time_arr / config.BASE_SAMPLE_RATE
-        plt.title("Lag over time with shift: {shift}")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Lag (s)")
-        plt.plot(plot_time_arr, np.array(lag_arr_copy) / config.BASE_SAMPLE_RATE)
-
+        plot_sync_results(lag_arr_copy,shift,config)
         cleaned_fine_lag_arr = clean_data_from_spikes(
-        lag_arr_copy, config.DISCONTINUITY_THRESHOLD
-        )
+                lag_arr_copy, config.DISCONTINUITY_THRESHOLD
+            )
 
-        plt.figure(figsize=(15, 2))
-        # create a time array based on config.FIRST_LAG_EPOCH_SIZE and length of lag_arr_copy
-        plot_time_arr = np.linspace(
-            0, len(lag_arr_copy) * config.FIRST_LAG_EPOCH_SIZE, len(lag_arr_copy)
-        )
-        # convert  to seconds
-        plot_time_arr = plot_time_arr / config.BASE_SAMPLE_RATE
-        plt.title("Lag over time with shift:{shift}")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Lag (s)")
-        plt.plot(plot_time_arr, np.array(lag_arr_copy) / config.BASE_SAMPLE_RATE)
-
-        cleaned_fine_lag_arr_test = cleaned_fine_lag_arr[~np.isnan(cleaned_fine_lag_arr)]
+        cleaned_fine_lag_arr_test = cleaned_fine_lag_arr[
+            ~np.isnan(cleaned_fine_lag_arr)
+        ]
         new_len = len(cleaned_fine_lag_arr_test)
         old_len = len(lag_arr_copy)
-        if new_len > 0.5*old_len:
-            print('Initial sync is good for shift: {shift}')
-            print(new_len)
-        if new_len > len_max:
-            len_max = new_len
-            right_shift = shift
-            comparison_clipped_data_manual_r = comparison_clipped_data_manual
-            idun_clipped_data_manual_r = idun_base_clipped_data_manual
-            idun_base_clipped_data_manual_r = idun_base_clipped_data_manual
-            comparison_base_clipped_df_manual_r = comparison_base_clipped_df_manual
-            same_times_r = same_times
-            lag_arr_r = lag_arr_copy
+        print(f"New len: {new_len}, Old len: {old_len}")
 
-    else:
-        print('No satisfactory alignment found for shift:', shift)
-    return len_max,right_shift,comparison_clipped_data_manual_r,idun_clipped_data_manual_r,idun_base_clipped_data_manual_r,comparison_base_clipped_df_manual_r,same_times_r,lag_arr_r
+        if new_len > SYNCED_LOSS_THRESH * old_len:
+            print(f"Shift is satisfactory of amount: {shift}s")
+            break
+    
+    return (
+        comparison_clipped_data_manual,
+        idun_clipped_data_manual,
+        idun_base_clipped_data_manual,
+        comparison_base_clipped_df_manual,
+        same_times,
+    )
