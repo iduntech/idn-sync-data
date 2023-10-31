@@ -513,11 +513,11 @@ def sync_data_start_same_time(
     elif timestamp_diff < 0:
         # IDUN starts before comparisonEEG
         idun_clipped_data = idun_clipped_data[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
+            -int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
         ]
         idun_base_clipped_data = idun_base_clipped_data[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
-        ].reset_index(drop=True)
+            -int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
+        ]
 
     if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0:  # prodigy
         next_step = True
