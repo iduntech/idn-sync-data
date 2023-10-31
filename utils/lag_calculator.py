@@ -499,9 +499,9 @@ def sync_data_start_same_time(
     idun_base_clipped_data,
     comparisoneeg_time_stamps,
     idun_time_stamps,
+    timestamp_diff,
     config,
 ):
-    timestamp_diff = comparisoneeg_time_stamps[0] - idun_time_stamps[0]
     if timestamp_diff >= 0:
         # comparisonEEG starts before IDUN
         comparisoneeg_clipped_data = comparisoneeg_clipped_data[
@@ -587,6 +587,7 @@ def sync_start_and_equalize_data_length(
     comparisoneeg_base_data_df,
     comparisoneeg_time_stamps,
     idun_time_stamps,
+    timestamp_diff,
     config,
 ):
     comparisoneeg_clipped_data = copy.deepcopy(comparisoneeg_filtered_data_rs)
@@ -607,6 +608,7 @@ def sync_start_and_equalize_data_length(
         idun_base_clipped_data,
         comparisoneeg_time_stamps,
         idun_time_stamps,
+        timestamp_diff,
         config,
     )
 
@@ -733,6 +735,8 @@ def load_edf_file(folder, subject, night, original_sample_rate):
     """
     edf_file_path = glob.glob(os.path.join(folder, subject, night, "*scoring.edf"))[0]
     complete_edf_file = highlevel.read_edf(edf_file_path)
+    start_date = complete_edf_file[2]['startdate']
+    unix_start_time = start_date.timestamp()
     edf_file_data = complete_edf_file[0]
     edf_file_chan = complete_edf_file[1]
     target_length = len(complete_edf_file[0][1])
@@ -758,7 +762,7 @@ def load_edf_file(folder, subject, night, original_sample_rate):
     comparison_raw_data.append(channel_names)
     comparison_time_stamps = create_timestamp_array(target_length, original_sample_rate)
     file_extention = "edf"
-    return comparison_raw_data, comparison_time_stamps, file_extention
+    return comparison_raw_data, comparison_time_stamps, file_extention, unix_start_time
 
 
 def load_xdf_file(folder, subject, night):
