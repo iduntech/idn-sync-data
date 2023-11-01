@@ -896,3 +896,43 @@ def find_automatic_alignment(
         comparison_base_clipped_df_manual,
         same_times,
     )
+
+def fill_data_gaps(timestamps, data_points, SAMPLE_RATE=250):
+    # Find the gaps and calculate the total number of missing points
+    missing_points = 0
+    gaps = []
+    for i in range(len(timestamps) - 1):
+        time_diff = timestamps[i+1] - timestamps[i]
+        if time_diff > 0.4:
+            gap_length = int(time_diff * SAMPLE_RATE) - 1
+            missing_points += gap_length
+            gaps.append((i, gap_length))
+            
+    # Create new arrays for timestamps and data_points
+    new_size = len(data_points) + missing_points
+    new_timestamps = np.zeros(new_size)
+    new_data_points = np.zeros(new_size)
+    
+    old_idx = 0
+    new_idx = 0
+    for (gap_start, gap_length) in gaps:
+        # Copy data up to the gap
+        while old_idx <= gap_start:
+            new_timestamps[new_idx] = timestamps[old_idx]
+            new_data_points[new_idx] = data_points[old_idx]
+            old_idx += 1
+            new_idx += 1
+            
+        # Fill the gap
+        for _ in range(gap_length):
+            new_timestamps[new_idx] = new_timestamps[new_idx - 1] + 0.04
+            new_idx += 1
+            
+    # Copy remaining data
+    while old_idx < len(data_points):
+        new_timestamps[new_idx] = timestamps[old_idx]
+        new_data_points[new_idx] = data_points[old_idx]
+        old_idx += 1
+        new_idx += 1
+            
+    return new_timestamps, new_data_points
