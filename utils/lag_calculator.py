@@ -497,8 +497,6 @@ def sync_data_start_same_time(
     comparisoneeg_base_clipped_df,
     idun_clipped_data,
     idun_base_clipped_data,
-    comparisoneeg_time_stamps,
-    idun_time_stamps,
     timestamp_diff,
     config,
 ):
@@ -520,16 +518,11 @@ def sync_data_start_same_time(
             -int(timestamp_diff * config.BASE_SAMPLE_RATE) : -1
         ]
 
-    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0:  # prodigy
-        next_step = True
-    else:
-        next_step = False  # mbt
     return (
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step,
     )
 
 
@@ -583,11 +576,9 @@ def cut_ends_to_same_length(
 
 def sync_start_and_equalize_data_length(
     comparisoneeg_filtered_data_rs,
+    comparisoneeg_base_data_df,
     idun_filtered_data,
     idun_base_data,
-    comparisoneeg_base_data_df,
-    comparisoneeg_time_stamps,
-    idun_time_stamps,
     timestamp_diff,
     config,
 ):
@@ -601,14 +592,11 @@ def sync_start_and_equalize_data_length(
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step,
     ) = sync_data_start_same_time(
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        comparisoneeg_time_stamps,
-        idun_time_stamps,
         timestamp_diff,
         config,
     )
@@ -630,18 +618,12 @@ def sync_start_and_equalize_data_length(
         0, len(idun_clipped_data) / config.BASE_SAMPLE_RATE, len(idun_clipped_data)
     )
 
-    if next_step == True:
-        print("Search for a better alignment")
-    else:
-        print("First alignment completed")
-
     return (
         comparisoneeg_clipped_data,
+        comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        comparisoneeg_base_clipped_df,
         same_times,
-        next_step,
     )
 
 
