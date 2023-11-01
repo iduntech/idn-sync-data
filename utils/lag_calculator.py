@@ -497,38 +497,32 @@ def sync_data_start_same_time(
     comparisoneeg_base_clipped_df,
     idun_clipped_data,
     idun_base_clipped_data,
-    comparisoneeg_time_stamps,
-    idun_time_stamps,
+    timestamp_diff,
     config,
 ):
-    timestamp_diff = comparisoneeg_time_stamps[0] - idun_time_stamps[0]
     if timestamp_diff >= 0:
         # comparisonEEG starts before IDUN
         comparisoneeg_clipped_data = comparisoneeg_clipped_data[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
+            int(timestamp_diff * config.BASE_SAMPLE_RATE) : -1
         ]
         comparisoneeg_base_clipped_df = comparisoneeg_base_clipped_df[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
+            int(timestamp_diff * config.BASE_SAMPLE_RATE) : -1
         ].reset_index(drop=True)
+
     elif timestamp_diff < 0:
         # IDUN starts before comparisonEEG
         idun_clipped_data = idun_clipped_data[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
+            -int(timestamp_diff * config.BASE_SAMPLE_RATE) : -1
         ]
         idun_base_clipped_data = idun_base_clipped_data[
-            int(timestamp_diff / config.BASE_SAMPLE_RATE) : -1
-        ].reset_index(drop=True)
+            -int(timestamp_diff * config.BASE_SAMPLE_RATE) : -1
+        ]
 
-    if timestamp_diff == 0 and comparisoneeg_time_stamps[0] == 0:  # prodigy
-        next_step = True
-    else:
-        next_step = False  # mbt
     return (
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step,
     )
 
 
@@ -582,11 +576,10 @@ def cut_ends_to_same_length(
 
 def sync_start_and_equalize_data_length(
     comparisoneeg_filtered_data_rs,
+    comparisoneeg_base_data_df,
     idun_filtered_data,
     idun_base_data,
-    comparisoneeg_base_data_df,
-    comparisoneeg_time_stamps,
-    idun_time_stamps,
+    timestamp_diff,
     config,
 ):
     comparisoneeg_clipped_data = copy.deepcopy(comparisoneeg_filtered_data_rs)
@@ -599,14 +592,12 @@ def sync_start_and_equalize_data_length(
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        next_step,
     ) = sync_data_start_same_time(
         comparisoneeg_clipped_data,
         comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        comparisoneeg_time_stamps,
-        idun_time_stamps,
+        timestamp_diff,
         config,
     )
 
@@ -627,18 +618,12 @@ def sync_start_and_equalize_data_length(
         0, len(idun_clipped_data) / config.BASE_SAMPLE_RATE, len(idun_clipped_data)
     )
 
-    if next_step == True:
-        print("Search for a better alignment")
-    else:
-        print("First alignment completed")
-
     return (
         comparisoneeg_clipped_data,
+        comparisoneeg_base_clipped_df,
         idun_clipped_data,
         idun_base_clipped_data,
-        comparisoneeg_base_clipped_df,
         same_times,
-        next_step,
     )
 
 
@@ -733,6 +718,8 @@ def load_edf_file(folder, subject, night, original_sample_rate):
     """
     edf_file_path = glob.glob(os.path.join(folder, subject, night, "*scoring.edf"))[0]
     complete_edf_file = highlevel.read_edf(edf_file_path)
+    start_date = complete_edf_file[2]['startdate']
+    unix_start_time = start_date.timestamp()
     edf_file_data = complete_edf_file[0]
     edf_file_chan = complete_edf_file[1]
     target_length = len(complete_edf_file[0][1])
@@ -758,7 +745,7 @@ def load_edf_file(folder, subject, night, original_sample_rate):
     comparison_raw_data.append(channel_names)
     comparison_time_stamps = create_timestamp_array(target_length, original_sample_rate)
     file_extention = "edf"
-    return comparison_raw_data, comparison_time_stamps, file_extention
+    return comparison_raw_data, comparison_time_stamps, file_extention, unix_start_time
 
 
 def load_xdf_file(folder, subject, night):
@@ -909,3 +896,43 @@ def find_automatic_alignment(
         comparison_base_clipped_df_manual,
         same_times,
     )
+
+def fill_data_gaps(timestamps, data_points, SAMPLE_RATE=250):
+    # Find the gaps and calculate the total number of missing points
+    missing_points = 0
+    gaps = []
+    for i in range(len(timestamps) - 1):
+        time_diff = timestamps[i+1] - timestamps[i]
+        if time_diff > 0.4:
+            gap_length = int(time_diff * SAMPLE_RATE) - 1
+            missing_points += gap_length
+            gaps.append((i, gap_length))
+            
+    # Create new arrays for timestamps and data_points
+    new_size = len(data_points) + missing_points
+    new_timestamps = np.zeros(new_size)
+    new_data_points = np.zeros(new_size)
+    
+    old_idx = 0
+    new_idx = 0
+    for (gap_start, gap_length) in gaps:
+        # Copy data up to the gap
+        while old_idx <= gap_start:
+            new_timestamps[new_idx] = timestamps[old_idx]
+            new_data_points[new_idx] = data_points[old_idx]
+            old_idx += 1
+            new_idx += 1
+            
+        # Fill the gap
+        for _ in range(gap_length):
+            new_timestamps[new_idx] = new_timestamps[new_idx - 1] + 0.04
+            new_idx += 1
+            
+    # Copy remaining data
+    while old_idx < len(data_points):
+        new_timestamps[new_idx] = timestamps[old_idx]
+        new_data_points[new_idx] = data_points[old_idx]
+        old_idx += 1
+        new_idx += 1
+            
+    return new_timestamps, new_data_points

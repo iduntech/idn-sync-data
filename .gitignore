@@ -8,3 +8,9 @@
 *.pyc
 *.txt
 *.xdf
+*.json
+*.zip
+*.html
+01_Pre_study
+test_data
+full_scalp_data
